@@ -132,6 +132,18 @@ export type VisualizationArtifacts = {
   artifacts: RenderArtifact[];
 };
 
+export type VisualizationHistoryEntry = {
+  requestId: string;
+  title: string;
+  prompt: string;
+  phase: Extract<AgentPhase, 'completed' | 'failed' | 'cancelled'>;
+  createdAt: string;
+  updatedAt: string;
+  jobId?: string;
+  artifacts: RenderArtifact[];
+  error?: string;
+};
+
 export type ReviewCheck = {
   name: string;
   passed: boolean;
@@ -181,9 +193,11 @@ export type AgentEvent =
   | {type: 'validation-failed'; message: string}
   | {type: 'preview-submitted'; renderJob: RenderJob}
   | {type: 'preview-succeeded'; renderJob: RenderJob}
+  | {type: 'preview-failed'; message: string}
   | {type: 'review-ready'; review: ReviewReport}
   | {type: 'repair-failed'; message: string}
   | {type: 'final-submitted'; renderJob: RenderJob}
+  | {type: 'final-failed'; message: string}
   | {
       type: 'final-succeeded';
       renderJob: RenderJob;

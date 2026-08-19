@@ -13,6 +13,7 @@ export type ApiSettings = {
   temperature: number;
   maxTokens: number;
   systemPrompt: string;
+  rendererUrl: string;
 };
 
 export const DEFAULT_SETTINGS: ApiSettings = {
@@ -21,4 +22,5 @@ export const DEFAULT_SETTINGS: ApiSettings = {
   temperature: 0.7,
   maxTokens: 1024,
   systemPrompt: 'You are a helpful, concise assistant.',
+  rendererUrl: '',
 };

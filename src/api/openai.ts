@@ -143,3 +143,64 @@ export function streamChatCompletion(
     done,
   };
 }
+
+type JsonCompletionResponse = {
+  choices?: Array<{
+    message?: {
+      content?: string | null;
+    };
+  }>;
+  error?: {
+    message?: string;
+  };
+};
+
+function parseJsonContent(content: string): unknown {
+  const trimmed = content.trim();
+  const unfenced = trimmed.startsWith('```')
+    ? trimmed.replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/, '')
+    : trimmed;
+  return JSON.parse(unfenced);
+}
+
+export async function completeJson<T>(
+  settings: ApiSettings,
+  apiKey: string,
+  messages: ApiMessage[],
+): Promise<T> {
+  const response = await fetch(completionsUrl(settings.baseUrl), {
+    method: 'POST',
+    headers: {
+      Accept: 'application/json',
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${apiKey.trim()}`,
+    },
+    body: JSON.stringify({
+      model: settings.model.trim(),
+      messages,
+      temperature: settings.temperature,
+      max_tokens: settings.maxTokens,
+      stream: false,
+    }),
+  });
+
+  const payload = (await response
+    .json()
+    .catch(() => ({}))) as JsonCompletionResponse;
+  if (!response.ok) {
+    throw new Error(
+      payload.error?.message ?? `The API request failed (${response.status}).`,
+    );
+  }
+  const content = payload.choices?.[0]?.message?.content;
+  if (!content) {
+    throw new Error('The API returned an empty structured response.');
+  }
+  try {
+    return parseJsonContent(content) as T;
+  } catch {
+    throw new Error(
+      'The API returned invalid JSON for the visualization stage.',
+    );
+  }
+}

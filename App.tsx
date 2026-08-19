@@ -14,6 +14,7 @@ import {
 } from 'react-native';
 
 import {streamChatCompletion, ChatStream} from './src/api/openai';
+import {VisualizationWorkspace} from './src/components/VisualizationWorkspace';
 import {
   clearMessages,
   loadApiKey,
@@ -66,6 +67,7 @@ export default function App() {
   const [streaming, setStreaming] = useState(false);
   const [ready, setReady] = useState(false);
   const [status, setStatus] = useState('');
+  const [view, setView] = useState<'chat' | 'visualize'>('chat');
   const streamRef = useRef<ChatStream | null>(null);
 
   useEffect(() => {
@@ -261,6 +263,21 @@ export default function App() {
             </Pressable>
             <Pressable
               accessibilityRole="button"
+              onPress={() =>
+                setView(previous =>
+                  previous === 'chat' ? 'visualize' : 'chat',
+                )
+              }
+              style={({pressed}) => [
+                styles.headerButton,
+                pressed && styles.pressed,
+              ]}>
+              <Text style={styles.headerButtonText}>
+                {view === 'chat' ? 'Visualize' : 'Chat'}
+              </Text>
+            </Pressable>
+            <Pressable
+              accessibilityRole="button"
               onPress={startNewChat}
               style={({pressed}) => [
                 styles.headerButton,
@@ -283,6 +300,16 @@ export default function App() {
               placeholderTextColor={colors.muted}
               style={styles.input}
               value={settings.baseUrl}
+            />
+            <TextInput
+              autoCapitalize="none"
+              autoCorrect={false}
+              keyboardType="url"
+              onChangeText={value => updateSettings('rendererUrl', value)}
+              placeholder="Renderer URL (https://renderer.example.com)"
+              placeholderTextColor={colors.muted}
+              style={styles.input}
+              value={settings.rendererUrl}
             />
             <TextInput
               autoCapitalize="none"
@@ -351,50 +378,56 @@ export default function App() {
 
         {status ? <Text style={styles.status}>{status}</Text> : null}
 
-        <FlatList
-          contentContainerStyle={styles.messages}
-          data={messages}
-          keyExtractor={message => message.id}
-          ListEmptyComponent={
-            <View style={styles.emptyState}>
-              <Text style={styles.emptyTitle}>Start a conversation</Text>
-              <Text style={styles.emptyText}>
-                Add your OpenAI-compatible endpoint and API key, then send a
-                message.
-              </Text>
-            </View>
-          }
-          renderItem={({item}) => <MessageBubble message={item} />}
-        />
+        {view === 'visualize' ? (
+          <VisualizationWorkspace settings={settings} apiKey={apiKey} />
+        ) : (
+          <>
+            <FlatList
+              contentContainerStyle={styles.messages}
+              data={messages}
+              keyExtractor={message => message.id}
+              ListEmptyComponent={
+                <View style={styles.emptyState}>
+                  <Text style={styles.emptyTitle}>Start a conversation</Text>
+                  <Text style={styles.emptyText}>
+                    Add your OpenAI-compatible endpoint and API key, then send a
+                    message.
+                  </Text>
+                </View>
+              }
+              renderItem={({item}) => <MessageBubble message={item} />}
+            />
 
-        <View style={styles.composer}>
-          <TextInput
-            editable={!streaming}
-            multiline
-            onChangeText={setInput}
-            onSubmitEditing={sendMessage}
-            placeholder={
-              streaming ? 'MobiGPT is responding…' : 'Message MobiGPT'
-            }
-            placeholderTextColor={colors.muted}
-            returnKeyType="send"
-            style={styles.composerInput}
-            value={input}
-          />
-          <Pressable
-            accessibilityRole="button"
-            disabled={streaming ? false : !input.trim()}
-            onPress={streaming ? stopGeneration : sendMessage}
-            style={({pressed}) => [
-              styles.sendButton,
-              !streaming && !input.trim() && styles.disabled,
-              pressed && styles.pressed,
-            ]}>
-            <Text style={styles.sendButtonText}>
-              {streaming ? 'Stop' : 'Send'}
-            </Text>
-          </Pressable>
-        </View>
+            <View style={styles.composer}>
+              <TextInput
+                editable={!streaming}
+                multiline
+                onChangeText={setInput}
+                onSubmitEditing={sendMessage}
+                placeholder={
+                  streaming ? 'MobiGPT is responding…' : 'Message MobiGPT'
+                }
+                placeholderTextColor={colors.muted}
+                returnKeyType="send"
+                style={styles.composerInput}
+                value={input}
+              />
+              <Pressable
+                accessibilityRole="button"
+                disabled={streaming ? false : !input.trim()}
+                onPress={streaming ? stopGeneration : sendMessage}
+                style={({pressed}) => [
+                  styles.sendButton,
+                  !streaming && !input.trim() && styles.disabled,
+                  pressed && styles.pressed,
+                ]}>
+                <Text style={styles.sendButtonText}>
+                  {streaming ? 'Stop' : 'Send'}
+                </Text>
+              </Pressable>
+            </View>
+          </>
+        )}
       </KeyboardAvoidingView>
     </SafeAreaView>
   );

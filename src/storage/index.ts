@@ -2,9 +2,11 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as Keychain from 'react-native-keychain';
 
 import {ApiSettings, ChatMessage, DEFAULT_SETTINGS} from '../types';
+import {VisualizationHistoryEntry} from '../visualization/types';
 
 const SETTINGS_KEY = '@mobigpt/settings/v1';
 const MESSAGES_KEY = '@mobigpt/messages/v1';
+const VISUALIZATION_HISTORY_KEY = '@mobigpt/visualizations/v1';
 const KEYCHAIN_SERVICE = 'com.pocketpallite.mobigpt.api-key';
 
 export async function loadSettings(): Promise<ApiSettings> {
@@ -64,4 +66,35 @@ export async function saveMessages(messages: ChatMessage[]): Promise<void> {
 
 export async function clearMessages(): Promise<void> {
   await AsyncStorage.removeItem(MESSAGES_KEY);
+}
+
+export async function loadVisualizationHistory(): Promise<
+  VisualizationHistoryEntry[]
+> {
+  const stored = await AsyncStorage.getItem(VISUALIZATION_HISTORY_KEY);
+  if (!stored) {
+    return [];
+  }
+
+  try {
+    const parsed = JSON.parse(stored) as unknown;
+    return Array.isArray(parsed)
+      ? (parsed as VisualizationHistoryEntry[]).slice(0, 50)
+      : [];
+  } catch {
+    return [];
+  }
+}
+
+export async function saveVisualizationHistory(
+  entries: VisualizationHistoryEntry[],
+): Promise<void> {
+  await AsyncStorage.setItem(
+    VISUALIZATION_HISTORY_KEY,
+    JSON.stringify(entries.slice(0, 50)),
+  );
+}
+
+export async function clearVisualizationHistory(): Promise<void> {
+  await AsyncStorage.removeItem(VISUALIZATION_HISTORY_KEY);
 }

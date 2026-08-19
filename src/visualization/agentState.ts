@@ -88,6 +88,17 @@ export function transitionAgentState(
         renderJob: event.renderJob,
         error: undefined,
       };
+    case 'preview-failed':
+      requirePhase(state, ['rendering-preview'], event.type);
+      if (state.repairAttempt >= MAX_REPAIR_ATTEMPTS) {
+        return {...state, phase: 'failed', error: event.message};
+      }
+      return {
+        ...state,
+        phase: 'repairing',
+        repairAttempt: state.repairAttempt + 1,
+        error: event.message,
+      };
     case 'review-ready':
       requirePhase(state, ['reviewing'], event.type);
       if (event.review.needsRevision) {
@@ -127,6 +138,17 @@ export function transitionAgentState(
         phase: 'rendering-final',
         renderJob: event.renderJob,
         error: undefined,
+      };
+    case 'final-failed':
+      requirePhase(state, ['rendering-final'], event.type);
+      if (state.repairAttempt >= MAX_REPAIR_ATTEMPTS) {
+        return {...state, phase: 'failed', error: event.message};
+      }
+      return {
+        ...state,
+        phase: 'repairing',
+        repairAttempt: state.repairAttempt + 1,
+        error: event.message,
       };
     case 'final-succeeded':
       requirePhase(state, ['rendering-final'], event.type);
