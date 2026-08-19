@@ -14,6 +14,9 @@ RUN apt-get update \
       gcc \
       g++ \
       make \
+      texlive-latex-extra \
+      texlive-fonts-extra \
+      texlive-science \
     && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app

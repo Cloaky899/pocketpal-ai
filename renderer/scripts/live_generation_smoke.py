@@ -22,13 +22,15 @@ from app.policy import ProgramPolicyError, validate_source
 SYSTEM_PROMPT = """You are a bounded educational visualization agent.
 Return JSON only. Use Manim Community Edition. Generate a short, deterministic,
 legible 2D scene. Do not use files, network access, subprocess, os, pathlib,
-shutil, eval, exec, __import__, or third-party packages beyond Manim and NumPy.
-Every scene must have a visible Text title at the top, explicit animation timing,
-and a final wait.
+shutil, eval, exec, __import__, Tex, MathTex, or LaTeX in this baseline smoke
+test. Use Text and vector primitives so the test does not depend on optional
+font packages. Do not use third-party packages beyond Manim and NumPy. Every
+scene must have a visible Text title at the top, explicit animation timing, and
+a final wait.
 """
 
 SCENE_PLAN_PROMPT = """Create a ScenePlan JSON for this topic: visually explain a vector rotating
-around the origin. Use exactly one scene, about 4 seconds, for a beginner audience.
+around the origin. Use exactly one scene, about 4 seconds, for a beginner audience. Do not use Tex or MathTex.
 Required keys: schemaVersion, requestId, title, summary, scenes, totalDurationSeconds.
 Each scene requires sceneId, title, learningObjective, visualElements,
 animationBeats, durationSeconds, and technicalNotes. technicalNotes must include
@@ -39,7 +41,7 @@ PROGRAM_PROMPT = """Create a ManimProgram JSON from the supplied ScenePlan.
 Required keys: schemaVersion, requestId, framework, entrypoint, sceneNames, code,
 and imports. The framework must be 'manim-ce', entrypoint 'video.py', imports must
 be ['manim'], and code must contain complete runnable Python with one Scene class.
-Use only `from manim import *`. Do not include Markdown fences or prose.
+Use only `from manim import *`, Text, Circle, Line, Arrow, and vector primitives. Do not use Tex or MathTex. Do not include Markdown fences or prose.
 
 ScenePlan:
 """
@@ -62,7 +64,12 @@ def request_completion(messages: list[dict[str, str]]) -> str:
     key = api_key()
     if not base or not key:
         raise RuntimeError("generation API credentials are not configured")
-    body = json.dumps({"model": model_name(), "messages": messages, "temperature": 0.2}).encode()
+    body = json.dumps({
+        "model": model_name(),
+        "messages": messages,
+        "temperature": 0.2,
+        "response_format": {"type": "json_object"},
+    }).encode()
     request = urllib.request.Request(
         f"{base}/chat/completions",
         data=body,
@@ -145,7 +152,13 @@ def main() -> int:
                 check=False,
             )
             if result.returncode != 0:
-                raise RuntimeError(f"generated scene failed to render: {scene_name}")
+                combined = (result.stdout + "\n" + result.stderr).splitlines()
+                exception_lines = [
+                    line.strip() for line in combined
+                    if re.search(r"(Error|Exception|Traceback|failed|Could not)", line, re.IGNORECASE)
+                ]
+                diagnostic = " | ".join(exception_lines[-5:] or combined[-5:])
+                raise RuntimeError(f"generated scene failed to render: {scene_name}; diagnostic={diagnostic[:1200]}")
             videos = list(media_dir.rglob(f"{scene_name}.mp4"))
             if not videos or videos[0].stat().st_size == 0:
                 raise RuntimeError(f"generated scene produced no MP4: {scene_name}")
