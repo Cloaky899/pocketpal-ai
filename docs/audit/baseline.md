@@ -24,14 +24,14 @@ The pinned tree is a deliberately small React Native application named **MobiGPT
 
 The current integration seams are:
 
-| Area | Current implementation | Extension point |
-|---|---|---|
-| Mobile shell | `App.tsx` contains the single-screen chat UI, settings, conversation list, and composer | Add a visualization workspace without replacing the existing chat transport |
-| Provider transport | `src/api/openai.ts` uses `react-native-sse` and OpenAI-compatible `/chat/completions` streaming | Add structured generation and renderer-job adapters beside the existing chat adapter |
-| Types | `src/types.ts` contains chat messages and API settings | Add versioned visualization, scene, render-job, review, and artifact schemas |
-| Persistence | `src/storage/index.ts` uses AsyncStorage for settings/history and Keychain for the API key | Add resumable job metadata and artifact indexes without storing videos in ordinary state |
-| Tests | `__tests__/api.test.ts` verifies the streaming POST contract | Add schema, policy, generator, renderer, and job-state tests |
-| CI | `.github/workflows/mobigpt-api.yml` runs JavaScript checks, Android release builds, and emulator smoke tests | Add a separate deterministic/live generation workflow and improve existing failure reporting |
+| Area               | Current implementation                                                                                       | Extension point                                                                              |
+| ------------------ | ------------------------------------------------------------------------------------------------------------ | -------------------------------------------------------------------------------------------- |
+| Mobile shell       | `App.tsx` contains the single-screen chat UI, settings, conversation list, and composer                      | Add a visualization workspace without replacing the existing chat transport                  |
+| Provider transport | `src/api/openai.ts` uses `react-native-sse` and OpenAI-compatible `/chat/completions` streaming              | Add structured generation and renderer-job adapters beside the existing chat adapter         |
+| Types              | `src/types.ts` contains chat messages and API settings                                                       | Add versioned visualization, scene, render-job, review, and artifact schemas                 |
+| Persistence        | `src/storage/index.ts` uses AsyncStorage for settings/history and Keychain for the API key                   | Add resumable job metadata and artifact indexes without storing videos in ordinary state     |
+| Tests              | `__tests__/api.test.ts` verifies the streaming POST contract                                                 | Add schema, policy, generator, renderer, and job-state tests                                 |
+| CI                 | `.github/workflows/mobigpt-api.yml` runs JavaScript checks, Android release builds, and emulator smoke tests | Add a separate deterministic/live generation workflow and improve existing failure reporting |
 
 The current package is React Native `0.82.1` with React `19.1.1`, Yarn Classic `1.22.22`, TypeScript, Jest, ESLint, AsyncStorage, Keychain, and React Native SSE. The package declares Node `>=22.21.0`.
 
@@ -55,12 +55,12 @@ The first dependency installation attempt failed before package installation bec
 
 Using Yarn’s engine override only to distinguish the runtime mismatch from project failures, the existing checks passed:
 
-| Check | Result |
-|---|---|
-| `yarn --ignore-engines typecheck` | Passed |
-| `yarn --ignore-engines lint` | Passed; emitted only an informational stale `baseline-browser-mapping` warning |
-| `yarn --ignore-engines test --runInBand` | Passed; 1 suite and 1 test |
-| Android/iOS build | Not run in the sandbox baseline; requires the platform toolchains and will remain CI/device validation work |
+| Check                                    | Result                                                                                                      |
+| ---------------------------------------- | ----------------------------------------------------------------------------------------------------------- |
+| `yarn --ignore-engines typecheck`        | Passed                                                                                                      |
+| `yarn --ignore-engines lint`             | Passed; emitted only an informational stale `baseline-browser-mapping` warning                              |
+| `yarn --ignore-engines test --runInBand` | Passed; 1 suite and 1 test                                                                                  |
+| Android/iOS build                        | Not run in the sandbox baseline; requires the platform toolchains and will remain CI/device validation work |
 
 The Node version requirement will be made consistent across local documentation and CI diagnostics. The implementation should not weaken the package engine declaration merely to accommodate an older local runtime.
 
