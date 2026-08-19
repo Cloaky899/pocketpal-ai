@@ -14,6 +14,7 @@ The live smoke script was also changed to include a short sanitized diagnostic o
 
 1. A model response was not valid JSON even though the prompt requested JSON. The request now sets OpenAI-compatible `response_format: {"type": "json_object"}` and the parser retains a fenced/substring fallback for compatible gateways.
 2. A generated scene used `MathTex`, but the local smoke environment did not include the optional `latex` executable. The baseline fixture prompt now explicitly avoids `Tex`/`MathTex` and uses `Text` plus vector primitives. The production renderer Dockerfile includes the LaTeX packages required for mathematical scenes.
+3. A live response was valid JSON but omitted required top-level ScenePlan keys. The smoke test now performs one bounded correction request that names the missing schema keys before failing.
 
 After these focused fixes, the built-in OpenAI-compatible API with `gpt-5-mini` passed policy validation and local Manim rendering.
 
@@ -30,4 +31,10 @@ The local checks after the repair were:
 | Jest                                  | Passed, 2 suites and 6 tests                                              |
 | Workflow formatting                   | Passed with Prettier                                                      |
 
-The next pushed run is the authoritative validation of the Docker-based GitHub Actions path. If it fails, inspect the first failing container step and apply a new focused corrective commit rather than changing unrelated mobile code.
+The first Docker-based rerun, [run 32300019041](https://github.com/Cloaky899/pocketpal-ai/actions/runs/32300019041), passed the JavaScript job but failed the deterministic render step with:
+
+> `PermissionError: [Errno 13] Permission denied: 'renderer/tests/output'`
+
+The container image runs as a non-root user while the GitHub workspace bind mount is owned by the runner UID. The first causal defect was therefore a bind-mounted workspace ownership mismatch. The corrective workflow commit runs the containerized Python, Manim, FFmpeg, and live-test commands with the runner’s `$(id -u):$(id -g)` and a writable temporary `HOME`. This retains the non-root boundary while allowing artifacts to be written to the workspace.
+
+The next pushed run is the authoritative validation of the UID/GID-corrected Docker-based GitHub Actions path. If it fails, inspect the first failing container step and apply a new focused corrective commit rather than changing unrelated mobile code.

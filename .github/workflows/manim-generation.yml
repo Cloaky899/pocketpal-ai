@@ -51,6 +51,8 @@ jobs:
         run: |
           docker run --rm \
             --entrypoint python \
+            --user "$(id -u):$(id -g)" \
+            -e HOME=/tmp \
             -e PYTHONPATH=/workspace/renderer \
             -v "$GITHUB_WORKSPACE:/workspace" \
             -w /workspace \
@@ -61,6 +63,8 @@ jobs:
           rm -rf renderer/tests/output
           docker run --rm \
             --entrypoint manim \
+            --user "$(id -u):$(id -g)" \
+            -e HOME=/tmp \
             -v "$GITHUB_WORKSPACE:/workspace" \
             -w /workspace \
             "$MANIM_IMAGE" \
@@ -71,6 +75,8 @@ jobs:
           mkdir -p renderer/tests/output/diagnostics
           docker run --rm \
             --entrypoint ffmpeg \
+            --user "$(id -u):$(id -g)" \
+            -e HOME=/tmp \
             -v "$GITHUB_WORKSPACE:/workspace" \
             -w /workspace \
             "$MANIM_IMAGE" \
@@ -131,6 +137,8 @@ jobs:
         run: |
           docker run --rm \
             --entrypoint python \
+            --user "$(id -u):$(id -g)" \
+            -e HOME=/tmp \
             -e PYTHONPATH=/workspace/renderer \
             -e GENERATION_API_BASE="$REGOLO_BASE_URL" \
             -e GENERATION_API_KEY="$REGOLO_API_KEY" \

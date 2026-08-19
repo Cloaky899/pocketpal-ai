@@ -108,26 +108,48 @@ def extract_json(content: str) -> dict:
     return value
 
 
+def request_json(messages: list[dict[str, str]], required_keys: set[str], label: str) -> dict:
+    retry_messages = list(messages)
+    for attempt in range(2):
+        try:
+            value = extract_json(request_completion(retry_messages))
+        except RuntimeError:
+            value = None
+        if isinstance(value, dict) and required_keys.issubset(value):
+            return value
+        missing = sorted(required_keys - set(value or {}))
+        retry_messages = [
+            *messages,
+            {
+                "role": "user",
+                "content": f"Your previous {label} response was incomplete. Return JSON only with every required top-level key: {', '.join(sorted(required_keys))}. Missing keys: {', '.join(missing) or 'valid JSON object'}.",
+            },
+        ]
+        if attempt == 1:
+            raise RuntimeError(f"model {label} omitted required keys after bounded retry")
+    raise RuntimeError(f"model {label} generation failed")
+
+
 def main() -> int:
-    plan = extract_json(
-        request_completion([
+    required_plan_keys = {"schemaVersion", "requestId", "title", "summary", "scenes", "totalDurationSeconds"}
+    plan = request_json(
+        [
             {"role": "system", "content": SYSTEM_PROMPT},
             {"role": "user", "content": SCENE_PLAN_PROMPT},
-        ])
+        ],
+        required_plan_keys,
+        "ScenePlan",
     )
-    required_plan_keys = {"schemaVersion", "requestId", "title", "summary", "scenes", "totalDurationSeconds"}
-    if not required_plan_keys.issubset(plan):
-        raise RuntimeError("model ScenePlan omitted required keys")
 
-    program = extract_json(
-        request_completion([
+    required_program_keys = {"schemaVersion", "requestId", "framework", "entrypoint", "sceneNames", "code", "imports"}
+    program = request_json(
+        [
             {"role": "system", "content": SYSTEM_PROMPT},
             {"role": "user", "content": PROGRAM_PROMPT + json.dumps(plan)},
-        ])
+        ],
+        required_program_keys,
+        "ManimProgram",
     )
-    required_program_keys = {"schemaVersion", "requestId", "framework", "entrypoint", "sceneNames", "code", "imports"}
-    if not required_program_keys.issubset(program):
-        raise RuntimeError("model ManimProgram omitted required keys")
     if program.get("framework") != "manim-ce":
         raise RuntimeError("model selected an unsupported Manim framework")
     source = program.get("code")
