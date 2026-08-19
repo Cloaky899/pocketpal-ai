@@ -43,6 +43,12 @@ ios/Config/Env.xcconfig
 android/app/**/google-services.json
 ios/GoogleService-Info.plist
 
+# Python renderer caches
+__pycache__/
+*.py[cod]
+.pytest_cache/
+renderer/workspaces/
+
 # Package-manager logs
 npm-debug.log
 yarn-error.log
