@@ -1,0 +1,140 @@
+name: Manim Generation
+
+on:
+  push:
+    branches:
+      - manim-agent
+      - main
+      - pocketpal-lite
+  pull_request:
+    paths:
+      - 'renderer/**'
+      - 'src/visualization/**'
+      - '__tests__/**'
+      - '.github/workflows/manim-generation.yml'
+  workflow_dispatch:
+    inputs:
+      live_provider:
+        description: Run the live OpenAI-compatible provider smoke test
+        required: false
+        default: false
+        type: boolean
+      model:
+        description: Model identifier for the live provider smoke test
+        required: false
+        default: gpt-oss-120b
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: manim-generation-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  PYTHON_VERSION: '3.11'
+  REGOLO_BASE_URL: https://api.regolo.ai/v1
+  GENERATION_MODEL: ${{ inputs.model || 'gpt-oss-120b' }}
+
+jobs:
+  deterministic:
+    name: Deterministic policy and renderer generation tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v7
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: pip
+          cache-dependency-path: renderer/requirements.txt
+      - name: Install system rendering dependencies
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends ffmpeg libcairo2-dev libpango1.0-dev pkg-config build-essential
+      - name: Install renderer dependencies
+        run: python -m pip install --upgrade pip && python -m pip install -r renderer/requirements.txt manim==0.19.0
+      - name: Run Python policy tests
+        env:
+          PYTHONPATH: renderer
+        run: python -m unittest discover -s renderer/tests -p 'test_*.py' -v
+      - name: Render deterministic Manim fixture
+        env:
+          PYTHONPATH: renderer
+        run: |
+          rm -rf renderer/tests/output
+          manim -ql --disable_caching --media_dir renderer/tests/output renderer/tests/fixtures/smoke_scene.py SmokeScene
+          video=$(find renderer/tests/output -type f -name 'SmokeScene.mp4' | head -n 1)
+          test -n "$video"
+          test -s "$video"
+          mkdir -p renderer/tests/output/diagnostics
+          ffmpeg -y -sseof -1 -i "$video" -frames:v 1 renderer/tests/output/diagnostics/smoke-frame.png
+          test -s renderer/tests/output/diagnostics/smoke-frame.png
+      - name: Validate TypeScript contract
+        uses: actions/setup-node@v7
+        with:
+          node-version: 22.21.0
+          cache: yarn
+      - name: Enable Corepack and install JavaScript dependencies
+        run: corepack enable && corepack prepare yarn@1.22.22 --activate && yarn install --frozen-lockfile --non-interactive
+      - name: Run JavaScript contract checks
+        run: yarn typecheck && yarn lint && yarn test --runInBand
+      - name: Upload safe deterministic artifacts
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: manim-deterministic-diagnostics
+          path: |
+            renderer/tests/output/diagnostics/
+          if-no-files-found: ignore
+          retention-days: 7
+
+  live_provider:
+    name: Opt-in live OpenAI-compatible generation smoke test
+    if: github.event_name == 'workflow_dispatch' && inputs.live_provider == true
+    needs: deterministic
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v7
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+      - name: Install system rendering dependencies
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends ffmpeg libcairo2-dev libpango1.0-dev pkg-config build-essential
+      - name: Install renderer dependencies
+        run: python -m pip install --upgrade pip && python -m pip install -r renderer/requirements.txt manim==0.19.0
+      - name: Check provider secret availability
+        id: secret_check
+        env:
+          REGOLO_API_KEY: ${{ secrets.REGOLO_API_KEY }}
+        run: |
+          if [ -z "$REGOLO_API_KEY" ]; then
+            echo 'available=false' >> "$GITHUB_OUTPUT"
+            echo 'REGOLO_API_KEY is not configured; live provider test is skipped.' >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo 'available=true' >> "$GITHUB_OUTPUT"
+          fi
+      - name: Run live prompt-to-Manim smoke test
+        if: steps.secret_check.outputs.available == 'true'
+        env:
+          PYTHONPATH: renderer
+          GENERATION_API_BASE: ${{ env.REGOLO_BASE_URL }}
+          GENERATION_API_KEY: ${{ secrets.REGOLO_API_KEY }}
+          GENERATION_MODEL: ${{ inputs.model || 'gpt-oss-120b' }}
+        run: python renderer/scripts/live_generation_smoke.py
+      - name: Record live-test status
+        if: always()
+        run: |
+          if [ '${{ steps.secret_check.outputs.available }}' = 'true' ]; then
+            echo 'Live provider smoke test completed for the configured model.' >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo 'Live provider smoke test skipped because REGOLO_API_KEY is unavailable.' >> "$GITHUB_STEP_SUMMARY"
+          fi
