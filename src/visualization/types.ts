@@ -141,6 +141,10 @@ export type VisualizationHistoryEntry = {
   updatedAt: string;
   jobId?: string;
   artifacts: RenderArtifact[];
+  renderMode?: 'local-first' | 'remote-renderer';
+  programHash?: string;
+  reviewPassed?: boolean;
+  repairAttempt?: number;
   error?: string;
 };
 

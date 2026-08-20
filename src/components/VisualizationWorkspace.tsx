@@ -1,4 +1,4 @@
-import React, {useCallback, useEffect, useMemo, useState} from 'react';
+import React, {useCallback, useEffect, useMemo, useRef, useState} from 'react';
 import {
   ActivityIndicator,
   FlatList,
@@ -12,12 +12,19 @@ import {
 } from 'react-native';
 
 import {completeJson} from '../api/openai';
+import {
+  InAppVisualizationSurface,
+  type InAppVisualizationSurfaceHandle,
+} from './InAppVisualizationSurface';
 import {loadVisualizationHistory, saveVisualizationHistory} from '../storage';
-import {ApiSettings} from '../types';
+import type {ApiSettings} from '../types';
+import {runInAppVisualization} from '../visualization/inAppPipeline';
 import {runVisualization} from '../visualization/pipeline';
 import {createRemoteRendererClient} from '../visualization/rendererClient';
-import {
+import type {InAppVisualizationState} from '../visualization/inAppTypes';
+import type {
   AgentState,
+  StructuredModelMessage,
   VisualizationHistoryEntry,
   VisualizationRequest,
 } from '../visualization/types';
@@ -34,11 +41,16 @@ const colors = {
   success: '#8ee6b2',
 };
 
+type RenderMode = 'local-first' | 'remote-renderer';
+
 function makeRequestId(): string {
   return `viz-${Date.now()}-${Math.random().toString(36).slice(2)}`;
 }
 
-function initialRequest(prompt: string): VisualizationRequest {
+function initialRequest(
+  prompt: string,
+  privacyMode: RenderMode,
+): VisualizationRequest {
   return {
     schemaVersion: 1,
     requestId: makeRequestId(),
@@ -46,9 +58,9 @@ function initialRequest(prompt: string): VisualizationRequest {
     audience: 'beginner',
     aspectRatio: '16:9',
     durationSeconds: 30,
-    quality: 'preview',
+    quality: privacyMode === 'local-first' ? 'preview' : 'high',
     narration: 'none',
-    privacyMode: 'remote-renderer',
+    privacyMode,
   };
 }
 
@@ -62,8 +74,13 @@ export function VisualizationWorkspace({
   const [prompt, setPrompt] = useState('');
   const [history, setHistory] = useState<VisualizationHistoryEntry[]>([]);
   const [state, setState] = useState<AgentState | null>(null);
+  const [localState, setLocalState] = useState<InAppVisualizationState | null>(
+    null,
+  );
+  const [renderMode, setRenderMode] = useState<RenderMode>('local-first');
   const [running, setRunning] = useState(false);
   const [status, setStatus] = useState('');
+  const surfaceRef = useRef<InAppVisualizationSurfaceHandle>(null);
 
   useEffect(() => {
     loadVisualizationHistory()
@@ -73,14 +90,19 @@ export function VisualizationWorkspace({
 
   const model = useMemo(
     () => ({
-      completeJson: async <T,>(
-        messages: Array<{
-          role: 'system' | 'user' | 'assistant';
-          content: string;
-        }>,
-      ) => completeJson<T>(settings, apiKey, messages),
+      completeJson: async <T,>(messages: StructuredModelMessage[]) =>
+        completeJson<T>(settings, apiKey, messages),
     }),
     [apiKey, settings],
+  );
+
+  const persistHistory = useCallback(
+    async (entry: VisualizationHistoryEntry) => {
+      const nextHistory = [entry, ...history].slice(0, 50);
+      setHistory(nextHistory);
+      await saveVisualizationHistory(nextHistory);
+    },
+    [history],
   );
 
   const generate = useCallback(async () => {
@@ -95,47 +117,98 @@ export function VisualizationWorkspace({
       );
       return;
     }
-    if (!settings.rendererUrl.trim()) {
-      setStatus('Configure the isolated renderer URL in Settings.');
+    if (renderMode === 'remote-renderer' && !settings.rendererUrl.trim()) {
+      setStatus(
+        'Configure the isolated renderer URL for high-fidelity export.',
+      );
       return;
     }
 
-    const request = initialRequest(trimmed);
-    const renderer = createRemoteRendererClient(settings.rendererUrl);
+    const request = initialRequest(trimmed, renderMode);
+    setState(null);
+    setLocalState(null);
     setRunning(true);
-    setStatus('Starting autonomous visualization run…');
+    setStatus(
+      renderMode === 'local-first'
+        ? 'Starting local visualization run…'
+        : 'Starting high-fidelity visualization run…',
+    );
     try {
-      const result = await runVisualization({
-        request,
-        model,
-        renderer,
-        onState: nextState => {
-          setState(nextState);
-          setStatus(`Stage: ${nextState.phase.replaceAll('-', ' ')}`);
-        },
-      });
-      const entry: VisualizationHistoryEntry = {
-        requestId: request.requestId,
-        title: result.scenePlan?.title ?? 'Untitled visualization',
-        prompt: request.prompt,
-        phase:
-          result.phase === 'completed' || result.phase === 'cancelled'
-            ? result.phase
-            : 'failed',
-        createdAt: new Date().toISOString(),
-        updatedAt: new Date().toISOString(),
-        jobId: result.renderJob?.jobId,
-        artifacts: result.artifacts?.artifacts ?? [],
-        error: result.error,
-      };
-      const nextHistory = [entry, ...history].slice(0, 50);
-      setHistory(nextHistory);
-      await saveVisualizationHistory(nextHistory);
-      setStatus(
-        result.phase === 'completed'
-          ? 'Visualization ready.'
-          : (result.error ?? 'Visualization failed.'),
-      );
+      if (renderMode === 'local-first') {
+        const renderer = surfaceRef.current?.controller;
+        if (!renderer)
+          throw new Error('The local renderer surface is not ready.');
+        const result = await runInAppVisualization({
+          request,
+          model,
+          renderer,
+          onState: nextState => {
+            setLocalState(nextState);
+            setStatus(`Local stage: ${nextState.phase.replaceAll('-', ' ')}`);
+          },
+        });
+        const entry: VisualizationHistoryEntry = {
+          requestId: request.requestId,
+          title: result.scenePlan?.title ?? 'Untitled visualization',
+          prompt: request.prompt,
+          phase:
+            result.phase === 'completed' || result.phase === 'cancelled'
+              ? result.phase
+              : 'failed',
+          createdAt: new Date().toISOString(),
+          updatedAt: new Date().toISOString(),
+          artifacts: [],
+          renderMode: 'local-first',
+          programHash: result.bundle?.contentHash,
+          reviewPassed: result.review
+            ? !result.review.needsRevision
+            : undefined,
+          repairAttempt: result.repairAttempt,
+          error: result.error,
+        };
+        await persistHistory(entry);
+        setStatus(
+          result.phase === 'completed'
+            ? 'Local visualization passed review.'
+            : (result.error ?? 'Local visualization failed.'),
+        );
+      } else {
+        const renderer = createRemoteRendererClient(settings.rendererUrl);
+        const result = await runVisualization({
+          request,
+          model,
+          renderer,
+          onState: nextState => {
+            setState(nextState);
+            setStatus(`Remote stage: ${nextState.phase.replaceAll('-', ' ')}`);
+          },
+        });
+        const entry: VisualizationHistoryEntry = {
+          requestId: request.requestId,
+          title: result.scenePlan?.title ?? 'Untitled visualization',
+          prompt: request.prompt,
+          phase:
+            result.phase === 'completed' || result.phase === 'cancelled'
+              ? result.phase
+              : 'failed',
+          createdAt: new Date().toISOString(),
+          updatedAt: new Date().toISOString(),
+          jobId: result.renderJob?.jobId,
+          artifacts: result.artifacts?.artifacts ?? [],
+          renderMode: 'remote-renderer',
+          reviewPassed: result.review
+            ? !result.review.needsRevision
+            : undefined,
+          repairAttempt: result.repairAttempt,
+          error: result.error,
+        };
+        await persistHistory(entry);
+        setStatus(
+          result.phase === 'completed'
+            ? 'High-fidelity visualization ready.'
+            : (result.error ?? 'Visualization failed.'),
+        );
+      }
     } catch (error) {
       setStatus(
         error instanceof Error
@@ -145,14 +218,18 @@ export function VisualizationWorkspace({
     } finally {
       setRunning(false);
     }
-  }, [apiKey, history, model, prompt, settings]);
+  }, [apiKey, model, persistHistory, prompt, renderMode, settings]);
 
   const openArtifact = useCallback((uri: string) => {
-    if (uri)
+    if (uri) {
       Linking.openURL(uri).catch(() =>
         setStatus('Could not open the artifact.'),
       );
+    }
   }, []);
+
+  const activePlan = localState?.scenePlan ?? state?.scenePlan;
+  const activeReview = localState?.review ?? state?.review;
 
   return (
     <ScrollView
@@ -160,8 +237,8 @@ export function VisualizationWorkspace({
       keyboardShouldPersistTaps="handled">
       <Text style={styles.heading}>Manim visualizer</Text>
       <Text style={styles.description}>
-        Describe a concept. The agent plans scenes, writes Manim code, renders a
-        preview, and repairs failures before returning a video.
+        Generate a local, reviewable mathematical animation inside the app. Use
+        high-fidelity export only when the full Python renderer is required.
       </Text>
       <TextInput
         editable={!running}
@@ -172,6 +249,30 @@ export function VisualizationWorkspace({
         style={styles.prompt}
         value={prompt}
       />
+      <View style={styles.modeRow}>
+        {(['local-first', 'remote-renderer'] as RenderMode[]).map(mode => (
+          <Pressable
+            accessibilityRole="button"
+            accessibilityState={{selected: renderMode === mode}}
+            disabled={running}
+            key={mode}
+            onPress={() => setRenderMode(mode)}
+            style={[
+              styles.modeButton,
+              renderMode === mode && styles.modeButtonActive,
+            ]}>
+            <Text
+              style={[
+                styles.modeText,
+                renderMode === mode && styles.modeTextActive,
+              ]}>
+              {mode === 'local-first'
+                ? 'Local preview'
+                : 'High-fidelity export'}
+            </Text>
+          </Pressable>
+        ))}
+      </View>
       <View style={styles.row}>
         <Pressable
           accessibilityRole="button"
@@ -191,17 +292,38 @@ export function VisualizationWorkspace({
       </View>
       {status ? (
         <Text
-          style={state?.phase === 'completed' ? styles.success : styles.status}>
+          style={
+            localState?.phase === 'completed' || state?.phase === 'completed'
+              ? styles.success
+              : styles.status
+          }>
           {status}
         </Text>
       ) : null}
-      {state?.scenePlan ? (
+      <InAppVisualizationSurface ref={surfaceRef} style={styles.preview} />
+      {activePlan ? (
         <View style={styles.card}>
-          <Text style={styles.cardTitle}>{state.scenePlan.title}</Text>
-          <Text style={styles.cardText}>{state.scenePlan.summary}</Text>
+          <Text style={styles.cardTitle}>{activePlan.title}</Text>
+          <Text style={styles.cardText}>{activePlan.summary}</Text>
           <Text style={styles.meta}>
-            {state.scenePlan.scenes.length} scene(s) ·{' '}
-            {state.scenePlan.totalDurationSeconds}s planned
+            {activePlan.scenes.length} scene(s) ·{' '}
+            {activePlan.totalDurationSeconds}s planned
+          </Text>
+        </View>
+      ) : null}
+      {activeReview ? (
+        <View style={styles.card}>
+          <Text style={styles.cardTitle}>Self-review</Text>
+          <Text style={styles.cardText}>
+            {activeReview.needsRevision
+              ? 'The agent requested a bounded repair.'
+              : 'Technical and visual review passed.'}
+          </Text>
+          <Text style={styles.meta}>
+            {activeReview.technicalChecks.filter(check => check.passed).length}/
+            {activeReview.technicalChecks.length} technical checks ·{' '}
+            {activeReview.visualChecks.filter(check => check.passed).length}/
+            {activeReview.visualChecks.length} visual checks
           </Text>
         </View>
       ) : null}
@@ -237,8 +359,17 @@ export function VisualizationWorkspace({
               {item.prompt}
             </Text>
             <Text style={styles.meta}>
-              {item.phase} · {new Date(item.updatedAt).toLocaleString()}
+              {item.phase} ·{' '}
+              {item.renderMode === 'local-first'
+                ? 'local preview'
+                : 'high fidelity'}{' '}
+              · {new Date(item.updatedAt).toLocaleString()}
             </Text>
+            {item.reviewPassed !== undefined ? (
+              <Text style={item.reviewPassed ? styles.success : styles.status}>
+                {item.reviewPassed ? 'Review passed' : 'Review needs attention'}
+              </Text>
+            ) : null}
             {item.artifacts.map(artifact => (
               <Pressable
                 key={`${item.requestId}-${artifact.kind}-${artifact.uri}`}
@@ -275,6 +406,20 @@ const styles = StyleSheet.create({
     padding: 12,
     textAlignVertical: 'top',
   },
+  modeRow: {flexDirection: 'row', gap: 8, marginTop: 10},
+  modeButton: {
+    borderColor: colors.border,
+    borderRadius: 8,
+    borderWidth: 1,
+    flex: 1,
+    padding: 10,
+  },
+  modeButtonActive: {
+    backgroundColor: colors.surfaceRaised,
+    borderColor: colors.accent,
+  },
+  modeText: {color: colors.muted, fontSize: 12, textAlign: 'center'},
+  modeTextActive: {color: colors.accent, fontWeight: '700'},
   row: {flexDirection: 'row', marginTop: 10},
   primaryButton: {
     alignItems: 'center',
@@ -288,6 +433,7 @@ const styles = StyleSheet.create({
   primaryText: {color: '#08101e', fontWeight: '700'},
   disabled: {opacity: 0.65},
   pressed: {opacity: 0.78},
+  preview: {height: 230, marginTop: 14, width: '100%'},
   status: {color: colors.danger, fontSize: 12, lineHeight: 17, marginTop: 10},
   success: {color: colors.success, fontSize: 12, lineHeight: 17, marginTop: 10},
   card: {
