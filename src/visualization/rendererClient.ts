@@ -5,6 +5,7 @@ import {
   type RenderOptions,
   type ScenePlan,
   type VisualizationArtifacts,
+  type StructuredModelMessage,
 } from './types';
 import {
   RendererRequestError,
@@ -192,9 +193,7 @@ export function createRemoteRendererClient(
 }
 
 export type VisualizationModelAdapter = {
-  completeJson<T>(
-    messages: Array<{role: 'system' | 'user' | 'assistant'; content: string}>,
-  ): Promise<T>;
+  completeJson<T>(messages: StructuredModelMessage[]): Promise<T>;
 };
 
 export function scenePlanToSubmission(

@@ -213,6 +213,18 @@ export type ModelMessage = {
   content: string;
 };
 
+export type StructuredModelContent =
+  | string
+  | Array<
+      | {type: 'text'; text: string}
+      | {type: 'image_url'; image_url: {url: string}}
+    >;
+
+export type StructuredModelMessage = {
+  role: 'system' | 'user' | 'assistant';
+  content: StructuredModelContent;
+};
+
 export type StructuredModelResponse = {
   content: string;
   model?: string;

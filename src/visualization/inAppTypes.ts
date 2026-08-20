@@ -186,3 +186,37 @@ export type InAppRendererStatus =
   | 'paused'
   | 'failed'
   | 'disposed';
+
+export type InAppReviewReport = {
+  technicalChecks: Array<{name: string; passed: boolean; message: string}>;
+  visualChecks: Array<{name: string; passed: boolean; message: string}>;
+  proposedRepairs: string[];
+  needsRevision: boolean;
+};
+
+export type InAppVisualizationPhase =
+  | 'idle'
+  | 'planning'
+  | 'generating'
+  | 'validating'
+  | 'compiling'
+  | 'rendering'
+  | 'reviewing'
+  | 'repairing'
+  | 'completed'
+  | 'failed'
+  | 'cancelled';
+
+export type InAppVisualizationState = {
+  requestId: string;
+  phase: InAppVisualizationPhase;
+  repairAttempt: number;
+  maxRepairAttempts: number;
+  scenePlan?: unknown;
+  program?: VisualizationProgram;
+  bundle?: CompiledSceneBundle;
+  review?: InAppReviewReport;
+  frameDataUrls: string[];
+  metrics?: InAppRenderMetrics;
+  error?: string;
+};

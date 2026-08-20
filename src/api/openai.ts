@@ -1,6 +1,7 @@
 import EventSource from 'react-native-sse';
 
 import {ApiSettings, MessageRole} from '../types';
+import type {StructuredModelMessage} from '../visualization/types';
 
 export type ApiMessage = {
   role: MessageRole;
@@ -166,7 +167,7 @@ function parseJsonContent(content: string): unknown {
 export async function completeJson<T>(
   settings: ApiSettings,
   apiKey: string,
-  messages: ApiMessage[],
+  messages: StructuredModelMessage[],
 ): Promise<T> {
   const response = await fetch(completionsUrl(settings.baseUrl), {
     method: 'POST',
