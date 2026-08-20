@@ -26,8 +26,8 @@ const html = `<!doctype html>
   </head>
   <body>
     <main id="scene" aria-label="Mathematical visualization"></main>
-    <script>${safeScript(runtime)}<\\/script>
-    <script>window.__POCKETPAL_BOOTSTRAP__(${JSON.stringify(bundle)});<\\/script>
+    <script>${safeScript(runtime)}</script>
+    <script>window.__POCKETPAL_BOOTSTRAP__(${JSON.stringify(bundle)});</script>
   </body>
 </html>`;
 
