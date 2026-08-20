@@ -1,4 +1,6 @@
 export const IN_APP_VISUALIZATION_SCHEMA_VERSION = 1 as const;
+import type {ScenePlan} from './types';
+
 export const IN_APP_ENGINE = 'manim-web' as const;
 
 export type InAppVector = readonly [number, number];
@@ -212,7 +214,7 @@ export type InAppVisualizationState = {
   phase: InAppVisualizationPhase;
   repairAttempt: number;
   maxRepairAttempts: number;
-  scenePlan?: unknown;
+  scenePlan?: ScenePlan;
   program?: VisualizationProgram;
   bundle?: CompiledSceneBundle;
   review?: InAppReviewReport;
