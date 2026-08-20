@@ -1,0 +1,75 @@
+name: In-app visualization renderer
+
+on:
+  push:
+    branches: [manim-agent, main]
+    paths:
+      - 'src/visualization/**'
+      - 'src/components/InAppVisualizationSurface.tsx'
+      - 'inapp-renderer/**'
+      - '__tests__/inApp*.test.ts'
+      - 'package.json'
+      - 'yarn.lock'
+      - '.github/workflows/inapp-renderer.yml'
+  pull_request:
+    paths:
+      - 'src/visualization/**'
+      - 'src/components/InAppVisualizationSurface.tsx'
+      - 'inapp-renderer/**'
+      - '__tests__/inApp*.test.ts'
+      - 'package.json'
+      - 'yarn.lock'
+      - '.github/workflows/inapp-renderer.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  contracts:
+    name: Contracts and mobile checks
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: yarn
+      - name: Install dependencies
+        run: yarn install --frozen-lockfile --ignore-engines
+      - name: Build bundled renderer asset
+        run: yarn build:inapp-renderer
+      - name: Typecheck
+        run: yarn typecheck
+      - name: Lint
+        run: yarn lint
+      - name: Unit tests
+        run: yarn test --runInBand
+      - name: Verify generated asset is reproducible
+        run: git diff --exit-code -- src/visualization/inAppRendererHtml.ts
+
+  chromium-render:
+    name: Chromium local renderer smoke
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: yarn
+      - name: Install Chromium
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y chromium
+      - name: Install dependencies
+        run: yarn install --frozen-lockfile --ignore-engines
+      - name: Build bundled renderer asset
+        run: yarn build:inapp-renderer
+      - name: Run real Chromium asset smoke test
+        run: yarn test:inapp-renderer

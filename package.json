@@ -9,6 +9,8 @@
     "typecheck": "tsc --noEmit",
     "lint": "eslint .",
     "test": "jest --runInBand",
+    "build:inapp-renderer": "node inapp-renderer/scripts/build_inapp_renderer.mjs",
+    "test:inapp-renderer": "node inapp-renderer/tests/asset_smoke.mjs",
     "format": "prettier --write \"**/*.{js,ts,tsx,json,md}\"",
     "format:check": "prettier --check \"**/*.{js,ts,tsx,json,md}\"",
     "build:android": "cd android && ./gradlew assembleDebug",
